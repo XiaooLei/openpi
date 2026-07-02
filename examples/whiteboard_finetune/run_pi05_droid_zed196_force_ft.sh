@@ -79,6 +79,18 @@ if [[ "$RESUME" == "1" && "$OVERWRITE_REQUESTED" == "1" ]]; then
   exit 2
 fi
 
+CHECKPOINT_DIR="$RUN_DIR/checkpoints/$CONFIG/$EXP_NAME"
+LATEST_CHECKPOINT_STEP="$(
+  find "$CHECKPOINT_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null \
+    | awk '/^[0-9]+$/ { print }' \
+    | sort -n \
+    | tail -1
+)"
+if [[ "$RESUME" != "1" && "$OVERWRITE_REQUESTED" != "1" && -n "$LATEST_CHECKPOINT_STEP" ]]; then
+  RESUME="1"
+  echo "Auto-resuming from checkpoint step $LATEST_CHECKPOINT_STEP in $CHECKPOINT_DIR"
+fi
+
 CHECKPOINT_MODE_ARGS=(--overwrite)
 if [[ "$RESUME" == "1" ]]; then
   CHECKPOINT_MODE_ARGS=(--resume)
@@ -95,6 +107,7 @@ echo "config=$CONFIG"
 echo "exp_name=$EXP_NAME"
 echo "per_device_batch_size=$PER_DEVICE_BATCH_SIZE"
 echo "resume=$RESUME"
+echo "latest_checkpoint_step=${LATEST_CHECKPOINT_STEP:-none}"
 echo "jax_device_count=$JAX_DEVICE_COUNT"
 echo "openpi_global_batch_size=$GLOBAL_BATCH_SIZE"
 echo "openpi_data_home=$OPENPI_DATA_HOME"
