@@ -28,11 +28,13 @@ export OPENPI_DATA_HOME="${OPENPI_DATA_HOME:-$DEFAULT_OPENPI_DATA_HOME}"
 export PYTHONPATH="$BASE_OPENPI_DIR/src:${PYTHONPATH:-}"
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export HF_DATASETS_OFFLINE="${HF_DATASETS_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 
 PI05_DROID_DIR="/inspire/qb-ilm/project/gjjproject/public/xl/openpi-baseline/.cache/openpi/openpi-assets/checkpoints/pi05_droid"
 PI05_DROID_PARAMS="$PI05_DROID_DIR/params"
 PI05_DROID_NORM_STATS="$PI05_DROID_DIR/assets/droid/norm_stats.json"
-PALIGEMMA_TOKENIZER="/inspire/qb-ilm/project/gjjproject/public/xl/openpi-baseline/.cache/openpi/big_vision/paligemma_tokenizer.model"
+PALIGEMMA_TOKENIZER="$OPENPI_DATA_HOME/big_vision/paligemma_tokenizer.model"
 
 for path in \
   "$PYTHON_BIN" \
