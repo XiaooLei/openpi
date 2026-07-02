@@ -62,6 +62,18 @@ class TransformedDataset(Dataset[T_co]):
         return len(self._dataset)
 
 
+class IndexSubsetDataset(Dataset[T_co]):
+    def __init__(self, dataset: Dataset[T_co], indices: Sequence[int]):
+        self._dataset = dataset
+        self._indices = tuple(indices)
+
+    def __getitem__(self, index: SupportsIndex) -> T_co:
+        return self._dataset[self._indices[int(index)]]
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+
 class IterableTransformedDataset(IterableDataset[T_co]):
     def __init__(
         self,
@@ -142,16 +154,24 @@ def create_torch_dataset(
         return FakeDataset(model_config, num_samples=1024)
 
     root = data_config.local_files_path
-    episodes = list(episode_indices if episode_indices is not None else data_config.train_episode_indices or [])
+    episodes = tuple(episode_indices if episode_indices is not None else data_config.train_episode_indices or ())
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id, root=root)
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
         root=root,
-        episodes=episodes or None,
+        # Keep LeRobot's internal episode_data_index complete. Passing a
+        # non-contiguous random episode subset to LeRobot can leave raw
+        # episode_index values pointing past the shortened episode index table.
+        episodes=None,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
     )
+    if episodes:
+        episode_set = set(episodes)
+        episode_column = torch.stack(dataset.hf_dataset["episode_index"]).tolist()
+        sample_indices = [idx for idx, ep_idx in enumerate(episode_column) if int(ep_idx) in episode_set]
+        dataset = IndexSubsetDataset(dataset, sample_indices)
 
     if data_config.prompt_from_task:
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
