@@ -11,9 +11,12 @@ fi
 ZIP_PATH="${OPENPI_WHITEBOARD_ZED145_ZIP:-/inspire/qb-ilm/project/gjjproject/public/xl/data/droid_whiteboard/wipe_board_v1_zed145_lerobot.zip}"
 DATASET_ROOT="${OPENPI_WHITEBOARD_ZED145_DATASET:-$RUN_DIR/data/wipe_board_v1_zed145}"
 ZIP_PREFIX="droid_whiteboard/wipe_board_v1_zed145"
+BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+source "$SCRIPT_DIR/common_env.sh"
+PYTHON_BIN="$(resolve_python_bin)"
 
 if [[ -f "$DATASET_ROOT/meta/info.json" ]]; then
-  python3 - "$DATASET_ROOT/meta/info.json" <<'PY'
+  "$PYTHON_BIN" - "$DATASET_ROOT/meta/info.json" <<'PY'
 import json
 import sys
 
@@ -48,7 +51,7 @@ if [[ ! -f "$TMP_DIR/$ZIP_PREFIX/meta/info.json" ]]; then
 fi
 
 mv "$TMP_DIR/$ZIP_PREFIX" "$DATASET_ROOT"
-python3 - "$DATASET_ROOT/meta/info.json" <<'PY'
+"$PYTHON_BIN" - "$DATASET_ROOT/meta/info.json" <<'PY'
 import json
 import sys
 

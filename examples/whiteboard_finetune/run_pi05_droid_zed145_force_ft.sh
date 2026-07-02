@@ -9,6 +9,8 @@ else
   RUN_DIR="${OPENPI_WHITEBOARD_RUN_DIR:-$SCRIPT_DIR}"
 fi
 BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+source "$SCRIPT_DIR/common_env.sh"
+PYTHON_BIN="$(resolve_python_bin)"
 CONFIG="${OPENPI_CONFIG:-pi05_droid_whiteboard_zed145_force_finetune}"
 EXP_NAME="${1:-zed145_force_$(date +%Y%m%d-%H%M%S)}"
 if [[ $# -gt 0 ]]; then
@@ -29,7 +31,7 @@ PI05_DROID_NORM_STATS="$PI05_DROID_DIR/assets/droid/norm_stats.json"
 PALIGEMMA_TOKENIZER="/inspire/qb-ilm/project/gjjproject/public/xl/openpi-baseline/.cache/openpi/big_vision/paligemma_tokenizer.model"
 
 for path in \
-  "$BASE_OPENPI_DIR/.venv/bin/python3" \
+  "$PYTHON_BIN" \
   "$PI05_DROID_PARAMS/_METADATA" \
   "$PI05_DROID_NORM_STATS" \
   "$PALIGEMMA_TOKENIZER" \
@@ -55,7 +57,7 @@ EOF
   esac
 done
 
-JAX_DEVICE_COUNT="$("$BASE_OPENPI_DIR/.venv/bin/python3" - <<'PY'
+JAX_DEVICE_COUNT="$("$PYTHON_BIN" - <<'PY'
 import jax
 
 print(jax.device_count())
@@ -72,7 +74,7 @@ echo "dataset=$OPENPI_WHITEBOARD_196EPS_FORCE_DATASET"
 mkdir -p "$RUN_DIR/logs" "$RUN_DIR/checkpoints" "$RUN_DIR/assets"
 cd "$BASE_OPENPI_DIR"
 
-"$BASE_OPENPI_DIR/.venv/bin/python3" scripts/train.py "$CONFIG" \
+"$PYTHON_BIN" scripts/train.py "$CONFIG" \
   --exp-name "$EXP_NAME" \
   --checkpoint-base-dir "$RUN_DIR/checkpoints" \
   --assets-base-dir "$RUN_DIR/assets" \

@@ -10,6 +10,8 @@ else
   RUN_DIR="${OPENPI_WHITEBOARD_RUN_DIR:-$SCRIPT_DIR}"
 fi
 BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+source "$SCRIPT_DIR/common_env.sh"
+PYTHON_BIN="$(resolve_python_bin)"
 CONFIG="${OPENPI_CONFIG:-pi05_droid_whiteboard_zed145_joint_position_finetune}"
 EXP_NAME="${1:-zed145_joint_position_$(date +%Y%m%d-%H%M%S)}"
 if [[ $# -gt 0 ]]; then
@@ -34,7 +36,7 @@ if [[ "${SKIP_DATA_PREP:-0}" != "1" && ! -f "$OPENPI_WHITEBOARD_ZED145_DATASET/m
 fi
 
 for path in \
-  "$BASE_OPENPI_DIR/.venv/bin/python3" \
+  "$PYTHON_BIN" \
   "$PI05_DROID_PARAMS/_METADATA" \
   "$PI05_DROID_NORM_STATS" \
   "$PALIGEMMA_TOKENIZER" \
@@ -60,7 +62,7 @@ EOF
   esac
 done
 
-JAX_DEVICE_COUNT="$("$BASE_OPENPI_DIR/.venv/bin/python3" - <<'PY'
+JAX_DEVICE_COUNT="$("$PYTHON_BIN" - <<'PY'
 import jax
 
 print(jax.device_count())
@@ -74,7 +76,7 @@ echo "openpi_global_batch_size=$GLOBAL_BATCH_SIZE"
 mkdir -p "$RUN_DIR/logs" "$RUN_DIR/checkpoints" "$RUN_DIR/assets"
 cd "$BASE_OPENPI_DIR"
 
-"$BASE_OPENPI_DIR/.venv/bin/python3" scripts/train.py "$CONFIG" \
+"$PYTHON_BIN" scripts/train.py "$CONFIG" \
   --exp-name "$EXP_NAME" \
   --checkpoint-base-dir "$RUN_DIR/checkpoints" \
   --assets-base-dir "$RUN_DIR/assets" \

@@ -48,6 +48,20 @@ Override it with:
 OPENPI_WHITEBOARD_RUN_DIR=/path/to/runtime/workdir
 ```
 
+The launch scripts resolve Python in this order:
+
+```text
+OPENPI_PYTHON
+PYTHON_BIN
+<this repo>/.venv/bin/python3
+/inspire/qb-ilm/project/gjjproject/public/xl/projects/droid-whiteboard/openpi/.venv/bin/python3
+python3 from PATH
+```
+
+TensorBoard is resolved similarly with `OPENPI_TENSORBOARD` or
+`TENSORBOARD_BIN`. This lets the fork branch run either with its own venv or
+with the previously prepared OpenPI environment.
+
 ## Current 196-Episode Runs
 
 Vision/joint-state run:

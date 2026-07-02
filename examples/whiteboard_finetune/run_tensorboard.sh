@@ -9,7 +9,8 @@ else
   RUN_DIR="${OPENPI_WHITEBOARD_RUN_DIR:-$SCRIPT_DIR}"
 fi
 BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-TENSORBOARD_BIN="$BASE_OPENPI_DIR/.venv/bin/tensorboard"
+source "$SCRIPT_DIR/common_env.sh"
+TENSORBOARD_BIN="$(resolve_tensorboard_bin)"
 LOGDIR="${1:-$RUN_DIR/checkpoints}"
 PORT="${TENSORBOARD_PORT:-6006}"
 

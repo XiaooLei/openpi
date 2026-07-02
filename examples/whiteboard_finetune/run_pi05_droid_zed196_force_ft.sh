@@ -9,6 +9,8 @@ else
   RUN_DIR="${OPENPI_WHITEBOARD_RUN_DIR:-$SCRIPT_DIR}"
 fi
 BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+source "$SCRIPT_DIR/common_env.sh"
+PYTHON_BIN="$(resolve_python_bin)"
 CONFIG="${OPENPI_CONFIG:-pi05_droid_whiteboard_zed196_force_finetune}"
 REPO_ID="wipe_board_v1_zed196_force"
 EXP_NAME="${1:-complete196_force_$(date +%Y%m%d-%H%M%S)}"
@@ -35,7 +37,7 @@ if [[ "${SKIP_DATA_PREP:-0}" != "1" && ! -f "$OPENPI_WHITEBOARD_ZED196_DATASET/m
 fi
 
 for path in \
-  "$BASE_OPENPI_DIR/.venv/bin/python3" \
+  "$PYTHON_BIN" \
   "$PI05_DROID_PARAMS/_METADATA" \
   "$PALIGEMMA_TOKENIZER" \
   "$OPENPI_WHITEBOARD_ZED196_DATASET/meta/info.json"; do
@@ -76,7 +78,7 @@ if [[ "$RESUME" == "1" ]]; then
   CHECKPOINT_MODE_ARGS=(--resume)
 fi
 
-JAX_DEVICE_COUNT="$("$BASE_OPENPI_DIR/.venv/bin/python3" - <<'PY'
+JAX_DEVICE_COUNT="$("$PYTHON_BIN" - <<'PY'
 import jax
 
 print(jax.device_count())
@@ -100,12 +102,12 @@ NORM_STATS="$RUN_DIR/assets/$CONFIG/$REPO_ID/norm_stats.json"
 if [[ "${SKIP_NORM_STATS:-0}" != "1" && ! -f "$NORM_STATS" ]]; then
   echo "Computing norm stats: $NORM_STATS"
   cd "$RUN_DIR"
-  "$BASE_OPENPI_DIR/.venv/bin/python3" "$BASE_OPENPI_DIR/scripts/compute_norm_stats.py" --config-name "$CONFIG"
+  "$PYTHON_BIN" "$BASE_OPENPI_DIR/scripts/compute_norm_stats.py" --config-name "$CONFIG"
 fi
 
 cd "$BASE_OPENPI_DIR"
 
-"$BASE_OPENPI_DIR/.venv/bin/python3" scripts/train.py "$CONFIG" \
+"$PYTHON_BIN" scripts/train.py "$CONFIG" \
   --exp-name "$EXP_NAME" \
   --checkpoint-base-dir "$RUN_DIR/checkpoints" \
   --assets-base-dir "$RUN_DIR/assets" \

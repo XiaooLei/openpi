@@ -12,7 +12,8 @@ TAR_PATH="${OPENPI_WHITEBOARD_ZED196_TAR:-/inspire/qb-ilm/project/gjjproject/pub
 DATASET_ROOT="${OPENPI_WHITEBOARD_ZED196_DATASET:-$RUN_DIR/data/wipe_board_v1_zed196_force}"
 TAR_PREFIX="droid_whiteboard/wipe_board_v1_zed196_force"
 BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-PYTHON_BIN="${PYTHON_BIN:-$BASE_OPENPI_DIR/.venv/bin/python3}"
+source "$SCRIPT_DIR/common_env.sh"
+PYTHON_BIN="$(resolve_python_bin)"
 
 repair_scalar_force_columns() {
   "$PYTHON_BIN" - "$DATASET_ROOT" <<'PY'
