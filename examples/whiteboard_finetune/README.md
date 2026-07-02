@@ -76,6 +76,17 @@ Force-enabled run:
 cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_force ./run_job.sh complete196_force
 ```
 
+30-frame action chunk runs:
+
+```bash
+cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_h30 ./run_job.sh complete196_joint_position_h30
+cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_force_h30 ./run_job.sh complete196_force_h30
+```
+
+The h30 configs use `action_horizon=30`. With the current 15 Hz datasets, each
+action chunk covers 2 seconds. Checkpoints are stored under separate config
+names ending in `_h30`.
+
 50-frame action chunk runs:
 
 ```bash
