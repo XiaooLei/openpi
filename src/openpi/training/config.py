@@ -5,7 +5,9 @@ from collections.abc import Sequence
 import dataclasses
 import difflib
 import logging
+import os
 import pathlib
+import random
 from typing import Any, Literal, Protocol, TypeAlias
 
 import etils.epath as epath
@@ -32,6 +34,36 @@ import openpi.transforms as _transforms
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
 Filter: TypeAlias = nnx.filterlib.Filter
+
+_XL_ROOT = "/inspire/qb-ilm/project/gjjproject/public/xl"
+_WHITEBOARD_RUN_DIR = os.environ.get(
+    "OPENPI_WHITEBOARD_RUN_DIR",
+    f"{_XL_ROOT}/wipeboard/pi05_zed145_finetune",
+)
+_PI05_DROID_CHECKPOINT_DIR = f"{_XL_ROOT}/openpi-baseline/.cache/openpi/openpi-assets/checkpoints/pi05_droid"
+_PI05_DROID_PARAMS = f"{_PI05_DROID_CHECKPOINT_DIR}/params"
+_PI05_DROID_ASSETS = f"{_PI05_DROID_CHECKPOINT_DIR}/assets"
+_WHITEBOARD_ZED145_DATASET = os.environ.get(
+    "OPENPI_WHITEBOARD_ZED145_DATASET",
+    f"{_WHITEBOARD_RUN_DIR}/data/wipe_board_v1_zed145",
+)
+_WHITEBOARD_ZED196_DATASET = os.environ.get(
+    "OPENPI_WHITEBOARD_ZED196_DATASET",
+    f"{_WHITEBOARD_RUN_DIR}/data/wipe_board_v1_zed196_force",
+)
+
+
+def _random_episode_split(
+    total_episodes: int, eval_episodes: int, seed: int = 42
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    indices = list(range(total_episodes))
+    random.Random(seed).shuffle(indices)
+    eval_indices = tuple(sorted(indices[:eval_episodes]))
+    train_indices = tuple(sorted(indices[eval_episodes:]))
+    return train_indices, eval_indices
+
+
+_WHITEBOARD_ZED196_TRAIN_EPISODES, _WHITEBOARD_ZED196_EVAL_EPISODES = _random_episode_split(196, 10)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -89,6 +121,14 @@ class DataConfig:
 
     # If true, will use the LeRobot dataset task to define the prompt.
     prompt_from_task: bool = False
+    # Optional local LeRobot dataset path. If set, repo_id is used as the logical
+    # dataset id while this path is passed as the LeRobot root.
+    local_files_path: str | None = None
+    # Optional episode subsets for train/eval splits.
+    train_episode_indices: Sequence[int] | None = None
+    eval_episode_indices: Sequence[int] | None = None
+    # Number of leading action dims used by eval MAE. Useful when actions are padded.
+    eval_action_dims: int | None = None
 
     # Only used for RLDS data loader (ie currently only used for DROID).
     rlds_data_dir: str | None = None
@@ -430,28 +470,49 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
     To convert your custom DROID dataset (<10s of hours) to LeRobot format, see examples/droid/convert_droid_data_to_lerobot.py
     """
 
+    # If true, convert absolute 7-DoF joint action targets to deltas relative to
+    # the current state. Leave gripper action absolute.
+    use_delta_joint_actions: bool = False
+    # Optional extra observation keys to append to the proprioceptive state.
+    # e.g. ("observation/force_torque_wrench",). Empty tuple preserves current behavior.
+    extra_state_keys: tuple[str, ...] = ()
+
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_dict = {
+            "observation/exterior_image_1_left": "exterior_image_1_left",
+            "observation/exterior_image_2_left": "exterior_image_2_left",
+            "observation/wrist_image_left": "wrist_image_left",
+            "observation/joint_position": "joint_position",
+            "observation/gripper_position": "gripper_position",
+            "actions": "actions",
+            "prompt": "prompt",
+        }
+        for key in self.extra_state_keys:
+            # Keep model-side keys under observation/* while reading the flat
+            # LeRobot column name, e.g. observation/force_torque_wrench reads
+            # the dataset column force_torque_wrench.
+            repack_dict[key] = key.removeprefix("observation/")
+
         repack_transform = _transforms.Group(
-            inputs=[
-                _transforms.RepackTransform(
-                    {
-                        "observation/exterior_image_1_left": "exterior_image_1_left",
-                        "observation/exterior_image_2_left": "exterior_image_2_left",
-                        "observation/wrist_image_left": "wrist_image_left",
-                        "observation/joint_position": "joint_position",
-                        "observation/gripper_position": "gripper_position",
-                        "actions": "actions",
-                        "prompt": "prompt",
-                    }
-                )
-            ]
+            inputs=[_transforms.RepackTransform(repack_dict)]
         )
         # We assume joint *velocity* actions, so we should *not* apply an additional delta transform.
         data_transforms = _transforms.Group(
-            inputs=[droid_policy.DroidInputs(model_type=model_config.model_type)],
+            inputs=[
+                droid_policy.DroidInputs(
+                    model_type=model_config.model_type,
+                    extra_state_keys=self.extra_state_keys,
+                )
+            ],
             outputs=[droid_policy.DroidOutputs()],
         )
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(7, -1)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
         model_transforms = ModelTransformFactory()(model_config)
 
         return dataclasses.replace(
@@ -512,6 +573,10 @@ class TrainConfig:
 
     # How often (in steps) to log training metrics.
     log_interval: int = 100
+    # How often (in steps) to run evaluation MAE. Set <= 0 to disable.
+    eval_interval: int = 0
+    # Number of eval batches sampled at each eval interval.
+    num_eval_batches: int = 0
     # How often (in steps) to save checkpoints.
     save_interval: int = 1000
     # If set, any existing checkpoints matching step % keep_period == 0 will not be deleted.
@@ -524,6 +589,8 @@ class TrainConfig:
 
     # If true, will enable wandb logging.
     wandb_enabled: bool = True
+    # If true, will enable TensorBoard logging under checkpoint_dir/tensorboard.
+    tensorboard_enabled: bool = False
 
     # Used to pass metadata to the policy server.
     policy_metadata: dict[str, Any] | None = None
@@ -915,6 +982,124 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_droid/params"),
         num_train_steps=20_000,
         batch_size=32,
+    ),
+    TrainConfig(
+        # Full pi05-DROID fine-tune for the 145-episode ZED whiteboard dataset.
+        name="pi05_droid_whiteboard_zed145_joint_position_finetune",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed145",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED145_DATASET,
+                train_episode_indices=tuple(range(130)),
+                eval_episode_indices=tuple(range(130, 145)),
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(
+                assets_dir=_PI05_DROID_ASSETS,
+                asset_id="droid",
+            ),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=5e-5,
+            decay_steps=100_000,
+            decay_lr=5e-5,
+        ),
+        num_train_steps=30_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=1_000,
+        keep_period=5_000,
+    ),
+    TrainConfig(
+        # Full pi05-DROID fine-tune for the complete 196-episode whiteboard dataset.
+        # The dataset contains force columns, but this config intentionally uses only
+        # images + joint/gripper state.
+        name="pi05_droid_whiteboard_zed196_joint_position_finetune",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed196",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED196_DATASET,
+                train_episode_indices=_WHITEBOARD_ZED196_TRAIN_EPISODES,
+                eval_episode_indices=_WHITEBOARD_ZED196_EVAL_EPISODES,
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(asset_id="wipe_board_v1_zed196"),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=500,
+            peak_lr=5e-5,
+            decay_steps=10_000,
+            decay_lr=5e-6,
+        ),
+        num_train_steps=10_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=2_000,
+        keep_period=2_000,
+    ),
+    TrainConfig(
+        # Full pi05-DROID fine-tune for the complete 196-episode whiteboard dataset
+        # with force/torque proprioception appended to joint/gripper state.
+        #
+        # State: 7 joint positions + 1 gripper + 6-D force_torque_wrench = 14-D,
+        # padded to 32-D for pi05 compatibility. Actions remain 8-D joint-delta + gripper.
+        name="pi05_droid_whiteboard_zed196_force_finetune",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed196_force",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED196_DATASET,
+                train_episode_indices=_WHITEBOARD_ZED196_TRAIN_EPISODES,
+                eval_episode_indices=_WHITEBOARD_ZED196_EVAL_EPISODES,
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(asset_id="wipe_board_v1_zed196_force"),
+            use_delta_joint_actions=True,
+            extra_state_keys=("observation/force_torque_wrench",),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=500,
+            peak_lr=5e-5,
+            decay_steps=10_000,
+            decay_lr=5e-6,
+        ),
+        num_train_steps=10_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=2_000,
+        keep_period=2_000,
     ),
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.

@@ -1,0 +1,77 @@
+Selected OpenPI pi05-DROID whiteboard checkpoints
+Date: 2026-07-02
+
+Selection criterion:
+Use the best available saved checkpoint by validation eval/mae_action_dims.
+This metric is preferred over the full eval/mae because it measures the real
+8 action dimensions and avoids the padded action dimensions dominating the
+selection.
+
+Selected checkpoints:
+
+1. Vision/joint
+   Config: pi05_droid_whiteboard_zed196_joint_position_finetune
+   Experiment: complete196_joint_position
+   Step: 24000
+   Path:
+   checkpoints/pi05_droid_whiteboard_zed196_joint_position_finetune/complete196_joint_position/24000
+   Metrics at saved checkpoint:
+   eval/mae_action_dims = 0.11004154
+   eval/mae = 0.02815992
+
+2. Force
+   Config: pi05_droid_whiteboard_zed196_force_finetune
+   Experiment: complete196_force
+   Step: 24000
+   Path:
+   checkpoints/pi05_droid_whiteboard_zed196_force_finetune/complete196_force/24000
+   Metrics at saved checkpoint:
+   eval/mae_action_dims = 0.10752877
+   eval/mae = 0.02755416
+
+Notes:
+- This package includes params and checkpoint-local assets only. It does not
+  include train_state / optimizer state, so it is intended for evaluation,
+  deployment, or loading weights, not exact optimizer-state resume training.
+- TensorBoard runs remain under the original checkpoint experiment directories.
+
+Force model input contract:
+
+- The force checkpoint was trained with:
+  extra_state_keys=("observation/force_torque_wrench",)
+- The dataset column used for this key is:
+  force_torque_wrench
+- The expected force vector is 6-D:
+  [fx, fy, fz, tx, ty, tz]
+- At deployment time, do not write force values into the natural-language task
+  instruction. The task text remains:
+  "wipe the whiteboard"
+- Instead, pass force_torque_wrench as a structured observation field and let
+  the OpenPI/DROID transform append it to the proprioceptive state.
+
+Force model state layout before pi05 tokenization:
+
+  dims 00-06: joint_position, 7-D
+  dim  07:    gripper_position, 1-D
+  dims 08-13: force_torque_wrench, 6-D [fx, fy, fz, tx, ty, tz]
+  dims 14-31: padding to the pi05 32-D state/action interface
+
+pi05 tokenization detail:
+
+- pi05 represents state inside the tokenized prompt as a discrete State field.
+- Conceptually, the force run is tokenized like:
+  Task: wipe the whiteboard, State: <joint/gripper/force/padding discrete bins>;
+  Action:
+- The numbers in State are normalized and discretized bins, not raw float force
+  values and not human-readable force text.
+
+Deployment requirements for the force checkpoint:
+
+- Provide force_torque_wrench at every control step.
+- Keep the force sensor units, sign convention, and coordinate frame consistent
+  with the training data.
+- Keep image, joint/gripper state, and force readings time-aligned.
+- Use the force checkpoint-local normalization stats:
+  checkpoints/pi05_droid_whiteboard_zed196_force_finetune/complete196_force/24000/assets/wipe_board_v1_zed196_force/norm_stats.json
+- If force is unavailable or unreliable at deployment time, use the vision/joint
+  checkpoint instead of zero-filling force for the force checkpoint.
