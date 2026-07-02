@@ -1101,6 +1101,81 @@ _CONFIGS = [
         save_interval=2_000,
         keep_period=2_000,
     ),
+    TrainConfig(
+        # Same 196-episode vision/joint fine-tune as above, but with pi05's
+        # default 50-frame action chunk. At 15 Hz this covers about 3.3 seconds.
+        name="pi05_droid_whiteboard_zed196_joint_position_finetune_h50",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=50,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed196",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED196_DATASET,
+                train_episode_indices=_WHITEBOARD_ZED196_TRAIN_EPISODES,
+                eval_episode_indices=_WHITEBOARD_ZED196_EVAL_EPISODES,
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(asset_id="wipe_board_v1_zed196"),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=500,
+            peak_lr=5e-5,
+            decay_steps=30_000,
+            decay_lr=5e-6,
+        ),
+        num_train_steps=30_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=2_000,
+        keep_period=2_000,
+    ),
+    TrainConfig(
+        # Same force-enabled 196-episode fine-tune as above, but with a 50-frame
+        # action chunk. State layout remains joint/gripper/force padded to 32-D.
+        name="pi05_droid_whiteboard_zed196_force_finetune_h50",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=50,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed196_force",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED196_DATASET,
+                train_episode_indices=_WHITEBOARD_ZED196_TRAIN_EPISODES,
+                eval_episode_indices=_WHITEBOARD_ZED196_EVAL_EPISODES,
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(asset_id="wipe_board_v1_zed196_force"),
+            use_delta_joint_actions=True,
+            extra_state_keys=("observation/force_torque_wrench",),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=500,
+            peak_lr=5e-5,
+            decay_steps=30_000,
+            decay_lr=5e-6,
+        ),
+        num_train_steps=30_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=2_000,
+        keep_period=2_000,
+    ),
     #
     # ALOHA Sim configs. This config is used to demonstrate how to train on a simple simulated environment.
     #

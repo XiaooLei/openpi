@@ -76,6 +76,17 @@ Force-enabled run:
 cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_force ./run_job.sh complete196_force
 ```
 
+50-frame action chunk runs:
+
+```bash
+cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_h50 ./run_job.sh complete196_joint_position_h50
+cd /path/to/openpi/examples/whiteboard_finetune && TRAIN_VARIANT=complete196_force_h50 ./run_job.sh complete196_force_h50
+```
+
+The h50 configs use `action_horizon=50`. With the current 15 Hz datasets, each
+action chunk covers about 3.3 seconds. Checkpoints are stored under separate
+config names ending in `_h50`.
+
 Resume to 30k total steps without overwrite:
 
 ```bash
