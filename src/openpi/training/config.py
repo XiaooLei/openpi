@@ -118,6 +118,10 @@ class DataConfig:
     # sequence is defined by the `action_horizon` field in the model config. This should be adjusted if your
     # LeRobot dataset is using different keys to represent the action.
     action_sequence_keys: Sequence[str] = ("actions",)
+    # Optional past frame lags used to build sparse action-history context for DROID.
+    # When set, LeRobot also queries action_sequence_keys at -lag timestamps, plus
+    # joint_position/gripper_position at those same lags and the current frame.
+    action_history_lags: Sequence[int] = ()
 
     # If true, will use the LeRobot dataset task to define the prompt.
     prompt_from_task: bool = False
@@ -476,6 +480,9 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
     # Optional extra observation keys to append to the proprioceptive state.
     # e.g. ("observation/force_torque_wrench",). Empty tuple preserves current behavior.
     extra_state_keys: tuple[str, ...] = ()
+    # Optional past action lags for sparse action-history context. For example,
+    # (1, 5, 15) appends 24 dims: delta action at t-1, t-5, and t-15.
+    action_history_lags: tuple[int, ...] = ()
 
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
@@ -494,9 +501,16 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
             # the dataset column force_torque_wrench.
             repack_dict[key] = key.removeprefix("observation/")
 
-        repack_transform = _transforms.Group(
-            inputs=[_transforms.RepackTransform(repack_dict)]
-        )
+        repack_inputs: list[_transforms.DataTransformFn] = []
+        if self.action_history_lags:
+            repack_inputs.append(
+                droid_policy.DroidSparseActionHistory(
+                    lags=self.action_history_lags,
+                    output_key="action_history_delta_sparse",
+                )
+            )
+        repack_inputs.append(_transforms.RepackTransform(repack_dict))
+        repack_transform = _transforms.Group(inputs=repack_inputs)
         # We assume joint *velocity* actions, so we should *not* apply an additional delta transform.
         data_transforms = _transforms.Group(
             inputs=[
@@ -517,6 +531,7 @@ class LeRobotDROIDDataConfig(DataConfigFactory):
 
         return dataclasses.replace(
             self.create_base_config(assets_dirs, model_config),
+            action_history_lags=self.action_history_lags,
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
@@ -1043,6 +1058,47 @@ _CONFIGS = [
             ),
             assets=AssetsConfig(asset_id="wipe_board_v1_zed196"),
             use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=500,
+            peak_lr=5e-5,
+            decay_steps=10_000,
+            decay_lr=5e-6,
+        ),
+        num_train_steps=10_000,
+        batch_size=32,
+        num_workers=8,
+        log_interval=50,
+        eval_interval=500,
+        num_eval_batches=10,
+        save_interval=2_000,
+        keep_period=2_000,
+    ),
+    TrainConfig(
+        # Horizon-16 joint fine-tune with sparse past delta-action context packed
+        # into pi05's 32-D state. State layout:
+        #   0:7 current joints, 7 current gripper,
+        #   8:16 action delta at t-1, 16:24 at t-5, 24:32 at t-15.
+        name="pi05_droid_whiteboard_zed196_joint_history_sparse_finetune",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotDROIDDataConfig(
+            repo_id="wipe_board_v1_zed196_history_sparse",
+            base_config=DataConfig(
+                prompt_from_task=True,
+                local_files_path=_WHITEBOARD_ZED196_DATASET,
+                train_episode_indices=_WHITEBOARD_ZED196_TRAIN_EPISODES,
+                eval_episode_indices=_WHITEBOARD_ZED196_EVAL_EPISODES,
+                eval_action_dims=8,
+            ),
+            assets=AssetsConfig(asset_id="wipe_board_v1_zed196_history_sparse"),
+            use_delta_joint_actions=True,
+            extra_state_keys=("observation/action_history_delta_sparse",),
+            action_history_lags=(1, 5, 15),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(_PI05_DROID_PARAMS),
         lr_schedule=_optimizer.CosineDecaySchedule(

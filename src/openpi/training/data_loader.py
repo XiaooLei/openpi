@@ -156,6 +156,16 @@ def create_torch_dataset(
     root = data_config.local_files_path
     episodes = tuple(episode_indices if episode_indices is not None else data_config.train_episode_indices or ())
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id, root=root)
+    future_action_timestamps = [t / dataset_meta.fps for t in range(action_horizon)]
+    delta_timestamps = {key: future_action_timestamps for key in data_config.action_sequence_keys}
+    if data_config.action_history_lags:
+        history_timestamps = [-lag / dataset_meta.fps for lag in data_config.action_history_lags]
+        delta_timestamps = {
+            key: [*history_timestamps, *future_action_timestamps] for key in data_config.action_sequence_keys
+        }
+        delta_timestamps["joint_position"] = [*history_timestamps, 0.0]
+        delta_timestamps["gripper_position"] = [*history_timestamps, 0.0]
+
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
         root=root,
@@ -163,9 +173,7 @@ def create_torch_dataset(
         # non-contiguous random episode subset to LeRobot can leave raw
         # episode_index values pointing past the shortened episode index table.
         episodes=None,
-        delta_timestamps={
-            key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
-        },
+        delta_timestamps=delta_timestamps,
     )
     if episodes:
         episode_set = set(episodes)

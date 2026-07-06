@@ -14,7 +14,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 # User-facing knobs for job submission.
-export TRAIN_VARIANT="${TRAIN_VARIANT:-full}"          # full | lora | complete196 | complete196_force | complete196_h30 | complete196_force_h30 | complete196_h50 | complete196_force_h50
+export TRAIN_VARIANT="${TRAIN_VARIANT:-full}"          # full | lora | complete196 | complete196_force | history_sparse | complete196_h30 | complete196_force_h30 | complete196_h50 | complete196_force_h50
 export OPENPI_PER_DEVICE_BATCH_SIZE="${OPENPI_PER_DEVICE_BATCH_SIZE:-32}"
 export RUN_TENSORBOARD="${RUN_TENSORBOARD:-1}"        # 1 | 0
 export TENSORBOARD_PORT="${TENSORBOARD_PORT:-6006}"
@@ -58,6 +58,9 @@ case "$TRAIN_VARIANT" in
   complete196_force|zed196_force|force)
     TRAIN_SCRIPT="$SCRIPT_DIR/run_pi05_droid_zed196_force_ft.sh"
     ;;
+  history_sparse|complete196_history_sparse|zed196_history_sparse)
+    TRAIN_SCRIPT="$SCRIPT_DIR/run_pi05_droid_zed196_history_sparse_ft.sh"
+    ;;
   complete196_h30|zed196_h30|h30)
     TRAIN_SCRIPT="$SCRIPT_DIR/run_pi05_droid_zed196_h30_ft.sh"
     ;;
@@ -71,7 +74,7 @@ case "$TRAIN_VARIANT" in
     TRAIN_SCRIPT="$SCRIPT_DIR/run_pi05_droid_zed196_force_h50_ft.sh"
     ;;
   *)
-    echo "Unknown TRAIN_VARIANT=$TRAIN_VARIANT; expected full, lora, complete196, complete196_force, complete196_h30, complete196_force_h30, complete196_h50, or complete196_force_h50." >&2
+    echo "Unknown TRAIN_VARIANT=$TRAIN_VARIANT; expected full, lora, complete196, complete196_force, history_sparse, complete196_h30, complete196_force_h30, complete196_h50, or complete196_force_h50." >&2
     exit 2
     ;;
 esac

@@ -83,6 +83,51 @@ class DroidInputs(transforms.DataTransformFn):
 
 
 @dataclasses.dataclass(frozen=True)
+class DroidSparseActionHistory(transforms.DataTransformFn):
+    """Build sparse past delta-action features from LeRobot delta timestamp queries."""
+
+    lags: tuple[int, ...]
+    output_key: str = "action_history_delta_sparse"
+
+    def __call__(self, data: dict) -> dict:
+        num_lags = len(self.lags)
+        if num_lags == 0:
+            return data
+
+        actions = np.asarray(data["actions"])
+        joint_position = np.asarray(data["joint_position"])
+        gripper_position = np.asarray(data["gripper_position"])
+
+        if actions.ndim != 2 or actions.shape[0] <= num_lags or actions.shape[-1] < 8:
+            raise ValueError(
+                f"Expected actions with shape [history+future, >=8], got {actions.shape} for lags={self.lags}"
+            )
+        if joint_position.ndim != 2 or joint_position.shape[0] != num_lags + 1 or joint_position.shape[-1] < 7:
+            raise ValueError(
+                "Expected joint_position with shape [history+current, >=7], "
+                f"got {joint_position.shape} for lags={self.lags}"
+            )
+        if gripper_position.shape[0] != num_lags + 1:
+            raise ValueError(
+                "Expected gripper_position with shape [history+current, ...], "
+                f"got {gripper_position.shape} for lags={self.lags}"
+            )
+
+        history_actions = actions[:num_lags]
+        history_joints = joint_position[:num_lags]
+        joint_deltas = history_actions[:, :7] - history_joints[:, :7]
+        gripper_actions = history_actions[:, 7:8]
+        history = np.concatenate([joint_deltas, gripper_actions], axis=-1).reshape(-1)
+
+        updated = dict(data)
+        updated[self.output_key] = history.astype(actions.dtype, copy=False)
+        updated["joint_position"] = joint_position[-1]
+        updated["gripper_position"] = np.asarray(gripper_position[-1])
+        updated["actions"] = actions[num_lags:]
+        return updated
+
+
+@dataclasses.dataclass(frozen=True)
 class DroidOutputs(transforms.DataTransformFn):
     def __call__(self, data: dict) -> dict:
         # Only return the first 8 dims.

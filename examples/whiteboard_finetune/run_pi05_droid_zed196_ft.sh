@@ -12,8 +12,9 @@ BASE_OPENPI_DIR="${BASE_OPENPI_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 source "$SCRIPT_DIR/common_env.sh"
 PYTHON_BIN="$(resolve_python_bin)"
 CONFIG="${OPENPI_CONFIG:-pi05_droid_whiteboard_zed196_joint_position_finetune}"
-REPO_ID="wipe_board_v1_zed196"
-EXP_NAME="${1:-complete196_joint_position_$(date +%Y%m%d-%H%M%S)}"
+REPO_ID="${OPENPI_REPO_ID:-wipe_board_v1_zed196}"
+EXP_PREFIX="${OPENPI_EXP_PREFIX:-complete196_joint_position}"
+EXP_NAME="${1:-${EXP_PREFIX}_$(date +%Y%m%d-%H%M%S)}"
 if [[ $# -gt 0 ]]; then
   shift
 fi
